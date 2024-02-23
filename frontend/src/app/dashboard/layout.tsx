@@ -2,7 +2,7 @@
 import MainHeader from '@/components/headers/MainHeader';
 import background from '../../../public/assets/background.png';
 import Footer from '@/components/headers/Footer';
-
+// import '../../../debug.css' For debugging purposes
 
 
 
@@ -14,9 +14,10 @@ export default function DashboardLayout({
   }) {
     return (
         <div style={{
+          
           backgroundImage: `url("${background.src}")`,
-          backgroundSize: 'cover',
-          flex: 1,
+          backgroundSize: '100% 100%',
+          backgroundRepeat: 'no-repeat',
 
       }}>
         

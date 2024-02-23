@@ -28,7 +28,7 @@ export default function Dashboard() {
             {/* Main Content */}
             <main>
             <section>
-                <PostFeed />
+            <PostFeed />
             </section>
             </main>
             
