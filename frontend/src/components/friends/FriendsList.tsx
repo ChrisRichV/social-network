@@ -7,7 +7,7 @@ interface FriendProps {
     id: number;
     firstName: string;
     lastName: string;
-    avatar: string;
+    avatar_url: string;
     username: string;
 }
 
@@ -36,32 +36,36 @@ export default function FriendsList() {
             {
                 friends.length > 0 ? 
                 friends.map(friend =>
-                    <FriendsListContent
+                    <UserTab
                         key={friend.id}
-                        id={friend.id}
-                        firstName={friend.firstName}
-                        lastName={friend.lastName}
-                        avatar={friend.avatar}
-                        username={friend.username}
+                        userName={friend.username}
+                        avatarUrl={friend.avatar_url}
                     />
+                    // <FriendsListContent
+                    //     key={friend.id}
+                    //     id={friend.id}
+                    //     firstName={friend.firstName}
+                    //     lastName={friend.lastName}
+                    //     avatar={friend.avatar}
+                    //     username={friend.username}
+                    // />
                 )
                 :
                 //TODO; Add a button to add friends
                 <div>
-                <UserTab/>
-                <UserTab/>
+                    <p>No friends found</p>
                 </div>
             }
         </>
     );
 }
 
-const FriendsListContent: React.FC<FriendProps> = ({ id, firstName, lastName, avatar, username }) => {
-    return (
-        <div>
-            <img src={avatar} alt="Avatar" style={{ maxWidth: '100%', height: 'auto' }} />
-            <h2>{firstName} {lastName}</h2>
-            <p>{username}</p>
-        </div>
-    );
-};
+// const FriendsListContent: React.FC<FriendProps> = ({ id, firstName, lastName, avatar_url, username }) => {
+//     return (
+//         <div>
+//             <img src={avatar} alt="Avatar" style={{ maxWidth: '100%', height: 'auto' }} />
+//             <h2>{firstName} {lastName}</h2>
+//             <p>{username}</p>
+//         </div>
+//     );
+// };

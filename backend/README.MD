@@ -10,6 +10,8 @@
   - [Groups](#groups)
   - [Friends](#friends)
   - [Profile](#profile)
+  - [Events](#events)
+  - [Notifications](#notifications)
 - [Backend contribution](#backend-contribution)
 - [Future Work](#future-work)
 - [Extra](#extra)
@@ -61,6 +63,7 @@ The backend is structured into several packages, each with a specific purpose:
 - **User Logout**: Endpoint `/api/users/logout` (POST)
 - **User Login**: Endpoint `/api/users/login` (POST)
 - **Check User Authentication**: Endpoint `/api/users/check-auth` (GET)
+- **Get users list**: Endpoint `/api/users/list` (GET)
 
 ---
 
@@ -109,6 +112,26 @@ mux.HandleFunc("/api/users/check-auth", handler.CheckAuth)
 ```
 
 This endpoint will perform an auth check of the user and return a boolean value.
+
+---
+
+```go
+mux.HandleFunc("/api/users/list", userHandler.ListUsersHandler).Methods("GET")
+```
+
+This endpoint retrieves a list of users excluding the authenticated user.
+
+Returns following values of users:
+
+```go
+type UserList struct {
+  Id        int    `json:"id"`
+  Username  string `json:"username"`
+  FirstName string `json:"first_name"`
+  LastName  string `json:"last_name"`
+  AvatarURL string `json:"avatar_url"`
+}
+```
 
 ---
 
@@ -519,6 +542,160 @@ User table:
 
 ```sql
 profile TEXT NOT NULL CHECK(profile IN ('public', 'private')) DEFAULT 'public',
+```
+
+---
+
+---
+
+### Events
+
+The Event functionality encompasses operations related to events, offering functionalities such as creating, retrieving, updating, and deleting events. Additionally, it supports managing attendance records for events.
+
+---
+
+- **Get All Events:** (GET) `/events` - Retrieves a list of all events.
+
+```go
+mux.HandleFunc("/events", eventHandler.GetAllEventsHandler).Methods("GET")
+```
+
+---
+
+- **Create Event:** (POST) `/events` - Creates a new event. Requires authentication.
+
+```go
+mux.HandleFunc("/events", eventHandler.CreateEventHandler).Methods("POST")
+```
+
+---
+
+- **Get Event by ID:** (GET) `/events/{id}` - Retrieves details of a specific event by its ID.
+
+```go
+	mux.HandleFunc("/events/{id}", eventHandler.GetEventByIDHandler).Methods("GET")
+```
+
+---
+
+- **Edit Event:** (PUT) `/events/{id}` - Updates details of a specific event. Requires authentication and ownership verification.
+
+```go
+mux.HandleFunc("/events/{id}", eventHandler.EditEventHandler).Methods("PUT")
+```
+
+---
+
+- **Delete Event:** (DELETE) `/events/{id}` - Deletes a specific event. Requires authentication and ownership verification.
+
+```go
+mux.HandleFunc("/events/{id}", eventHandler.DeleteEventHandler).Methods("DELETE")
+```
+
+---
+
+- **Get Events by Group ID:** (GET) `/events/{id}` - Retrieves events associated with a specific group.
+
+```go
+mux.HandleFunc("/events/{id}", eventHandler.GetEventsByGroupIDHandler).Methods("GET")
+```
+
+---
+
+- **Add or Update Attendance:** (PUT) `/events/{id}` - Adds or updates attendance for a user at a specific event. Requires authentication.
+
+```go
+mux.HandleFunc("/events/{id}", eventHandler.AddOrUpdateAttendanceHandler).Methods("PUT")
+```
+
+---
+
+- **Get Attendance by Event ID:** (GET) `/events/{id}` - Retrieves attendance records for a specific event.
+
+```go
+mux.HandleFunc("/events/{id}", eventHandler.GetAttendanceByEventIDHandler).Methods("GET")
+```
+
+---
+
+#### Events related code
+
+```go
+type Event struct {
+	Id          int       `json:"id"`
+	CreatorId   int       `json:"creator_id"`
+	Title       string    `json:"title"`
+	Description string    `json:"description"`
+	Location    string    `json:"location"`
+	StartTime   time.Time `json:"start_time"`
+	EndTime     time.Time `json:"end_time"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+```
+
+```go
+type EventAttendance struct {
+	Id        int       `json:"id"`
+	EventId   int       `json:"event_id"`
+	UserId    int       `json:"user_id"`
+	Status    string    `json:"status"`
+	CreatedAt time.Time `json:"created_at"`
+}
+```
+
+---
+
+---
+
+### Notifications
+
+The Notification functionality facilitates operations related to user notifications, including retrieving, creating, and managing notification status.
+
+---
+
+- **Get All Notifications:** (GET) /notifications - Retrieves a list of all notifications for the authenticated user.
+
+```go
+mux.HandleFunc("/notifications", notificationHandler.GetAllNotificationsHandler).Methods("GET")
+```
+
+---
+
+- **Create Notification:** (POST) /notifications - Creates a new notification. Requires authentication.
+
+```go
+mux.HandleFunc("/notifications", notificationHandler.CreateNotificationHandler).Methods("POST")
+```
+
+---
+
+- **Get Notification by ID:** (GET) /notifications/{id} - Retrieves details of a specific notification by its ID.
+
+```go
+mux.HandleFunc("/notifications/{id}", notificationHandler.GetNotificationByIDHandler).Methods("GET")
+```
+
+---
+
+- **Mark Notification as Read:** (PUT) /notifications/{id} - Marks a specific notification as read. Requires authentication.
+
+```go
+mux.HandleFunc("/notifications/{id}", notificationHandler.MarkNotificationAsReadHandler).Methods("PUT")
+```
+
+---
+
+#### Notifications related code
+
+```go
+type Notification struct {
+	Id        int       `json:"id"`
+	UserId    int       `json:"user_id"`
+	Type      string    `json:"type"`
+	Message   string    `json:"message"`
+	IsRead    bool      `json:"is_read"`
+	CreatedAt time.Time `json:"created_at"`
+}
 ```
 
 ---
