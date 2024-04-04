@@ -24,11 +24,13 @@ interface Profile {
 function ProfileIconDM() {
     const router = useRouter();
 
+    const BE_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT;
+    const FE_URL = process.env.NEXT_PUBLIC_URL;
     const [profileData, setProfileData] = useState<Profile | null>(null);
 
     useEffect(() => {
         const fetchProfile = async () => {
-            let url = 'http://localhost:8080/profile/users/me';
+            let url = `${FE_URL}:${BE_PORT}/profile/users/me`;
 
             const response = await fetch(url, {
                 method: 'GET',
@@ -47,7 +49,7 @@ function ProfileIconDM() {
         fetchProfile();
     }, []);
     const logout = async () => {
-        const response = await fetch('http://localhost:8080/api/users/logout', {
+        const response = await fetch(`${FE_URL}:${BE_PORT}/api/users/logout`, {
             method: 'POST',
             credentials: 'include',
         });
@@ -62,9 +64,10 @@ function ProfileIconDM() {
     };
 
 
-    const placeholderprofile = () => {
-        router.push('/dashboard/profile/placeholderprofile'); // Redirect to groups page
+    const myProfile = () => {
+        router.push('/dashboard/profile/me');
     };
+
     if (profileData === null) {
         return <span className="loading loading-spinner loading-lg"></span>;
     }
@@ -74,16 +77,16 @@ function ProfileIconDM() {
             <div className="dropdown dropdown-end">
                 <div tabIndex={0} role="button" className="btn btn-ghost btn-circle avatar"
                      style={{display: 'flex', justifyContent: 'center', alignItems: 'center'}}>
-                    <div className="w-10 rounded-full">
+                    <div className="w-12 rounded-full">
                         <img alt="Tailwind CSS Navbar component" src={profileData.avatar_url}/>
                         <p>{profileData.avatar_url}</p>
                     </div>
                 </div>
                 {/* Dropdown menu */}
                 <ul tabIndex={0} className="menu menu-lg dropdown-content mt-5 z-[1] p-3 shadow bg-primary rounded-box w-72 border-2 border-green-800">
-                    <h1 className="text-center text-2xl text-white p-2">{profileData.username}</h1>
+                    <h1 className="text-center font-extrabold text-2xl text-white p-2">{profileData.username}</h1>
                     <ul className="flex justify-between menu menu-horizontal bg-secondary rounded-box">
-                        <li onClick={placeholderprofile}>
+                        <li onClick={myProfile}>
                             <a>
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none"
                                      viewBox="0 0 20 20" stroke="currentColor">

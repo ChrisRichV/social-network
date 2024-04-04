@@ -1,10 +1,11 @@
 package model
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 // Data structures and domain model
-
-var UserID int
 
 type User struct {
 	Id        int
@@ -26,8 +27,14 @@ type UserList struct {
 	Username  string `json:"username"`
 	FirstName string `json:"first_name"`
 	LastName  string `json:"last_name"`
-	Status    string `json:"status"`
 	AvatarURL string `json:"avatar_url"`
+}
+
+type Attendance struct {
+	Id        int    `json:"id"`
+	Username  string `json:"username"`
+	AvatarURL string `json:"avatar_url"`
+	Status    string `json:"status"`
 }
 
 type Profile struct {
@@ -79,14 +86,52 @@ type Post struct {
 	ImageURL       string    `json:"image_url,omitempty"`
 	PrivacySetting string    `json:"privacy_setting"`
 	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type PostsResponse struct {
+	Id             int       `json:"id"`
+	UserID         int       `json:"user_id"`
+	GroupID        int       `json:"group_id,omitempty"`
+	Title          string    `json:"title"`
+	Content        string    `json:"content,omitempty"`
+	ImageURL       string    `json:"image_url,omitempty"`
+	PrivacySetting string    `json:"privacy_setting"`
+	CreatedAt      time.Time `json:"created_at"`
+	Likes          int       `json:"likes"`
+	Dislikes       int       `json:"dislikes"`
+	Creator        string    `json:"creator"`
+	CreatorAvatar  string    `json:"creator_avatar"`
+}
+
+type CommentsResponse struct {
+	Id        int       `json:"id"`
+	PostID    int       `json:"post_id"`
+	UserID    int       `json:"user_id,omitempty"`
+	Content   string    `json:"content"`
+	Image     string    `json:"image,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
+	Likes     int       `json:"likes"`
+	Dislikes  int       `json:"dislikes"`
+	Username  string    `json:"username"`
+	ImageURL  string    `json:"profile_image"`
+}
+
+type CreateCommentRequest struct {
+	PostID   int    `json:"post_id"`
+	Content  string `json:"content"`
+	ImageURL string `json:"image"`
 }
 
 type CreatePostRequest struct {
+	PostID         int    `json:"id"`
 	Title          string `json:"title"`
 	Content        string `json:"content,omitempty"`
+	Username       string `json:"username"`
 	GroupID        int    `json:"group_id,omitempty"`
 	ImageURL       string `json:"image_url,omitempty"`
 	PrivacySetting string `json:"privacy_setting"`
+	CreatedAt      string `json:"created_at"`
 }
 
 type UpdatePostRequest struct {
@@ -98,11 +143,13 @@ type UpdatePostRequest struct {
 }
 
 type Comment struct {
-	Id        int       `json:"id"`
-	PostID    int       `json:"post_id"`
-	UserID    int       `json:"user_id"`
-	Content   string    `json:"content"`
-	CreatedAt time.Time `json:"created_at"`
+	Id        int            `json:"id,omitempty"`
+	PostID    int            `json:"post_id"`
+	UserID    int            `json:"user_id,omitempty"`
+	Content   string         `json:"content"`
+	Image     sql.NullString `json:"image,omitempty"`
+	CreatedAt time.Time      `json:"created_at,omitempty"`
+	UpdatedAt time.Time      `json:"updated_at,omitempty"`
 }
 
 type UpdateCommentRequest struct {
@@ -114,16 +161,24 @@ type UpdateCommentRequest struct {
 }
 
 type Group struct {
-	Id          int       `json:"id"`
-	CreatorId   int       `json:"creator_id"`
-	Title       string    `json:"title"`
-	Description string    `json:"description"`
-	CreatedAt   time.Time `json:"created_at"`
+	Id            int           `json:"id"`
+	CreatorId     int           `json:"creator_id"`
+	Title         string        `json:"title"`
+	Description   string        `json:"description"`
+	Image         string        `json:"image"`
+	CreatedAt     time.Time     `json:"created_at,omitempty"`
+	UpdatedAt     time.Time     `json:"updated_at,omitempty"`
+	Members       []GroupMember `json:"members,omitempty"`
+	IsUserCreator bool          `json:"is_user_creator,omitempty"`
+	IsUserMember  bool          `json:"is_user_member,omitempty"`
 }
 
 type GroupMember struct {
-	GroupId  int       `json:"group_id"`
-	UserId   int       `json:"user_id"`
+	GroupID  int       `json:"group_id"`
+	UserID   int       `json:"user_id"`
+	Username string    `json:"username"`
+	ImageURL string    `json:"image"`
+	Status   string    `json:"status"`
 	JoinedAt time.Time `json:"joined_at"`
 }
 
@@ -135,6 +190,15 @@ type Friend struct {
 	ActionUserId int       `json:"action_user_id"`
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+type FriendRequest struct {
+	Id        int    `json:"id"`
+	UserId    int    `json:"user_id"`
+	FirstName string `json:"first_name"`
+	LastName  string `json:"last_name"`
+	AvatarURL string `json:"avatar_url"`
+	Username  string `json:"username"`
 }
 
 // Required information for the friends list
@@ -149,6 +213,8 @@ type FriendList struct {
 type Notification struct {
 	Id        int       `json:"id"`
 	UserId    int       `json:"user_id"`
+	GroupId   int       `json:"group_id,omitempty"`
+	SenderId  int       `json:"sender_id,omitempty"`
 	Type      string    `json:"type"`
 	Message   string    `json:"message"`
 	IsRead    bool      `json:"is_read"`
@@ -159,15 +225,22 @@ type GroupInvitation struct {
 	Id           int       `json:"id"`
 	GroupId      int       `json:"group_id"`
 	JoinUserId   int       `json:"join_user_id"`
+	Username     string    `json:"username"`
+	ImageURL     string    `json:"image"`
 	InviteUserId int       `json:"invite_user_id,omitempty"`
 	Status       string    `json:"status"`
 	CreatedAt    time.Time `json:"created_at"`
 }
 
+type GroupInvitationRequest struct {
+	GroupId    int `json:"group_id"`
+	JoinUserId int `json:"join_user_id"`
+}
+
 type Event struct {
 	Id          int       `json:"id"`
 	CreatorId   int       `json:"creator_id"`
-	GroupId     int       `json:"group_id,omitempty"`
+	GroupId     int       `json:"group_id"`
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Location    string    `json:"location"`
@@ -182,4 +255,10 @@ type EventAttendance struct {
 	UserId    int       `json:"user_id"`
 	Status    string    `json:"status"`
 	CreatedAt time.Time `json:"created_at"`
+}
+
+type VoteData struct {
+	Item   string `json:"item"`    // 'comment' or 'post'
+	ItemID int    `json:"item_id"` // comment or post id
+	Action string `json:"action"`  // 'like' or 'dislike'
 }

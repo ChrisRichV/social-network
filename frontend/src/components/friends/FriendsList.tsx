@@ -1,6 +1,5 @@
 "use client"
 import { useState, useEffect } from "react";
-import { useAuth } from "../../util/utils";
 import UserTab from "./UserTab";
 
 interface FriendProps {
@@ -12,17 +11,19 @@ interface FriendProps {
 }
 
 export default function FriendsList() {
+    const BE_PORT = process.env.NEXT_PUBLIC_BACKEND_PORT;
+    const FE_URL = process.env.NEXT_PUBLIC_URL;
     const [friends, setFriends] = useState<FriendProps[]>([]);
 
     useEffect(() => {
-        fetch('http://localhost:8080/friends', {
+        // fetch(`${process.env.FRONTEND_URL}:${process.env.BACKEND_PORT}/friends`, {
+        fetch(`${FE_URL}:${BE_PORT}/friends/me`, {
             method: 'GET',
             credentials: 'include' // Send cookies with the request
         })
             .then(response => response.json())
             .then(data => {
-                if (data.message === "No friends found") {
-                    // TODO: Handle no friends found
+                if (data === null) {
                     return;
                 }
                 setFriends(data)
@@ -38,8 +39,10 @@ export default function FriendsList() {
                 friends.map(friend =>
                     <UserTab
                         key={friend.id}
+                        userID={friend.id}
                         userName={friend.username}
-                        avatarUrl={friend.avatar_url}
+                        friendStatus={'accepted'}
+                        avatar={friend.avatar_url}
                     />
                     // <FriendsListContent
                     //     key={friend.id}

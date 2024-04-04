@@ -6,73 +6,163 @@ import (
 	"backend/util"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
+	"time"
 
 	"github.com/gorilla/mux"
 )
 
 type CommentHandler struct {
-	commentRepo *repository.CommentRepository
-	sessionRepo *repository.SessionRepository
+	commentRepo         *repository.CommentRepository
+	sessionRepo         *repository.SessionRepository
+	notificationHandler *NotificationHandler
+	postRepo            *repository.PostRepository
+	userRepo            *repository.UserRepository
+	VoteHandler         *VoteHandler
 }
 
-func NewCommentHandler(commentRepo *repository.CommentRepository, sessionRepo *repository.SessionRepository) *CommentHandler {
-	return &CommentHandler{commentRepo: commentRepo, sessionRepo: sessionRepo}
+func NewCommentHandler(commentRepo *repository.CommentRepository, sessionRepo *repository.SessionRepository, notificationHandler *NotificationHandler, postRepo *repository.PostRepository, userRepo *repository.UserRepository, voteHandler *VoteHandler) *CommentHandler {
+	return &CommentHandler{commentRepo: commentRepo, sessionRepo: sessionRepo, notificationHandler: notificationHandler, postRepo: postRepo, userRepo: userRepo, VoteHandler: voteHandler}
 }
 
 func (h *CommentHandler) CreateCommentHandler(w http.ResponseWriter, r *http.Request) {
-	// TODO: id may not come from request and will cause error
-	var newComment model.Comment
-	err := json.NewDecoder(r.Body).Decode(&newComment)
-	if err != nil {
-		http.Error(w, "Error decoding request body: "+err.Error(), http.StatusBadRequest)
+	err1 := r.ParseMultipartForm(10 << 20) // Maximum memory 10MB, change this based on your requirements
+	if err1 != nil {
+		http.Error(w, "Error parsing form data: "+err1.Error(), http.StatusBadRequest)
 		return
 	}
-
+	vars := mux.Vars(r)
+	postId, ok := vars["id"]
+	intPostId, err := strconv.Atoi(postId)
+	if !ok {
+		http.Error(w, "Post ID is missing in parameters", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Error decoding id for comment request: "+err.Error(), http.StatusBadRequest)
+		return
+	}
 	userID, err := h.sessionRepo.GetUserIDFromSessionToken(util.GetSessionToken(r))
 	if err != nil {
 		http.Error(w, "User not authenticated: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
+	var newComment model.Comment
+	newComment.Content = r.FormValue("content")
+	newComment.PostID = intPostId
 	newComment.UserID = userID
 
+	_, _, err = r.FormFile("image")
+	if err != nil {
+		newComment.Image.String = ""
+	} else {
+		newComment.Image.String = os.Getenv("NEXT_PUBLIC_URL") + ":" + os.Getenv("NEXT_PUBLIC_BACKEND_PORT") + "/images/comments/brt"
+	}
+
 	// Insert the comment into the database
-	createdCommentId, err := h.commentRepo.CreateComment(newComment)
+	commentID, err := h.commentRepo.CreateComment(&newComment)
 	if err != nil {
 		http.Error(w, "Failed to create comment: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	util.ImageSave(w, r, strconv.Itoa(int(commentID)), "comment")
+
+	// NOTIFICATION
+	postOwnerId, err := h.postRepo.GetPostOwnerIDByPostID(newComment.PostID)
+	if err != nil {
+		http.Error(w, "Failed to get post owner id: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	post, err := h.postRepo.GetPostByID(newComment.PostID)
+	if err != nil {
+		http.Error(w, "Failed to get post: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// authenticated user username
+	username, err := h.userRepo.GetUsernameByID(userID)
+	if err != nil {
+		http.Error(w, "Failed to get username: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	message := username + " commented on your post: " + post.Title
+
+	if newComment.UserID != int(postOwnerId) {
+		err = h.notificationHandler.CreateNotification(int(postOwnerId), userID, "post", message)
+		if err != nil {
+			http.Error(w, "Failed to create notification: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	user, err := h.userRepo.GetUserProfileByID(newComment.UserID)
+	if err != nil {
+		http.Error(w, "Error getting user profile: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	commentImageUrl, err := h.commentRepo.GetCommentImageURL(int(commentID))
+	if err != nil {
+		http.Error(w, "Error getting comment image url: "+err.Error(), http.StatusInternalServerError)
+		return
+
+	}
+	commentsResponse := model.CommentsResponse{
+		Id:        int(commentID),
+		PostID:    newComment.PostID,
+		UserID:    newComment.UserID,
+		Content:   newComment.Content,
+		Image:     commentImageUrl,
+		CreatedAt: time.Now(),
+		Likes:     0,
+		Dislikes:  0,
+		Username:  username,
+		ImageURL:  user.AvatarURL, // Set the avatar URL here
+	}
 
 	// Successful response
-	response := map[string]interface{}{
-		"message": "Comment created successfully",
-		"data":    createdCommentId,
-	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	json.NewEncoder(w).Encode(commentsResponse)
 }
 
-func (h *CommentHandler) GetCommentsByUserIDorPostID(w http.ResponseWriter, r *http.Request) {
-	var id string
+func (h *CommentHandler) GetCommentsByPostID(w http.ResponseWriter, r *http.Request) {
+	vars := mux.Vars(r)
+	postId, ok := vars["id"]
+	intPostId, err := strconv.Atoi(postId)
 
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&id)
+	if !ok {
+		http.Error(w, "Post ID is missing in parameters", http.StatusBadRequest)
+		return
+	}
 	if err != nil {
 		http.Error(w, "Error decoding id for comment request: "+err.Error(), http.StatusBadRequest)
 		return
 	}
-	intid, err := strconv.Atoi(id)
-	if err != nil {
-		http.Error(w, "Error converting id to int: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-	comments, err := h.commentRepo.GetCommentsByID(intid)
+
+	comments, err := h.commentRepo.GetAllPostComments(intPostId)
 	if err != nil {
 		http.Error(w, "Error retrieving comments: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
+	// get votes for each comment and append to CommentResponse
+	commentsWithVotes, err := h.VoteHandler.AppendVotesToCommentsResponse(comments)
+	if err != nil {
+		http.Error(w, "Error appending votes to comments: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// we need user information per comment aswell - username, profile picture
+	for i, comment := range commentsWithVotes {
+		user, err := h.userRepo.GetUserProfileByID(comment.UserID)
+		if err != nil {
+			http.Error(w, "Error getting user profile: "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		commentsWithVotes[i].Username = user.Username
+		commentsWithVotes[i].ImageURL = user.AvatarURL
+	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(comments)
+	json.NewEncoder(w).Encode(commentsWithVotes)
 }
 
 func (h *CommentHandler) DeleteCommentHandler(w http.ResponseWriter, r *http.Request) {

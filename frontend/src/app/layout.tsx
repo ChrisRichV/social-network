@@ -23,7 +23,13 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en">
+<<<<<<< HEAD
       <body className={inter.className}>
+=======
+
+      <body className={inter.className}>
+
+>>>>>>> 7c8f7315593bd6374a3a9e6573066531c6b7bd92
         <div style={{
           backgroundImage: `url("${background.src}")`,
           backgroundSize: 'cover',
@@ -32,8 +38,16 @@ export default function RootLayout({
           minHeight: '100vh',
         }}>{children}
         </div>
+<<<<<<< HEAD
         <div/>
       </body>
+=======
+
+
+        <div />
+      </body>
+
+>>>>>>> 7c8f7315593bd6374a3a9e6573066531c6b7bd92
     </html>
   )
 }

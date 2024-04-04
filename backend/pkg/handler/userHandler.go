@@ -6,6 +6,7 @@ import (
 	"backend/util"
 	"encoding/json"
 	"net/http"
+	"os"
 	"strconv"
 
 	"github.com/gorilla/mux"
@@ -48,7 +49,8 @@ func (h *UserHandler) UserRegisterHandler(w http.ResponseWriter, r *http.Request
 	// Change input password data to hashed variant
 	regData.Password = string(hashedPassword)
 
-	util.ImageSave(w, r, &regData) // parses image data from request to the variable
+	util.ImageSave(w, r, regData.Username, "register") // parses image data from request to the variable
+	regData.AvatarURL = os.Getenv("NEXT_PUBLIC_URL") + ":" + os.Getenv("NEXT_PUBLIC_BACKEND_PORT") + "/images/" + regData.Username + ".jpg"
 	// Store user in database
 	userID, err := h.userRepo.RegisterUser(regData)
 	if err != nil {
@@ -64,7 +66,7 @@ func (h *UserHandler) UserRegisterHandler(w http.ResponseWriter, r *http.Request
 	http.SetCookie(w, &http.Cookie{
 		Name:   "session_token",
 		Value:  sessionToken,
-		MaxAge: 60 * 15, // 15 minutes
+		MaxAge: 60 * 30, // 30 minutes
 		Path:   "/",     // Make cookie available for all paths
 	})
 
@@ -168,7 +170,7 @@ func (h *UserHandler) EditUserProfileHandler(w http.ResponseWriter, r *http.Requ
 	// Change input password data to hashed variant
 	regData.Password = string(hashedPassword)
 
-	util.ImageSave(w, r, &regData) // parses image data from request to the variable
+	util.ImageSave(w, r, regData.Username, "register") // parses image data from request to the variable
 	// Store user in database
 	err = h.userRepo.UpdateUserProfile(userID, regData)
 	if err != nil {

@@ -1,11 +1,11 @@
 package handler
 
 import (
-	"backend/pkg/model"
 	"backend/pkg/repository"
 	"backend/util"
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 
@@ -13,12 +13,36 @@ import (
 )
 
 type FriendHandler struct {
-	friendRepository  *repository.FriendsRepository
-	sessionRepository *repository.SessionRepository
+	userRepository      *repository.UserRepository
+	friendRepository    *repository.FriendsRepository
+	sessionRepository   *repository.SessionRepository
+	notificationHandler *NotificationHandler
 }
 
-func NewFriendHandler(friendRepository *repository.FriendsRepository, sessionRepository *repository.SessionRepository) *FriendHandler {
-	return &FriendHandler{friendRepository: friendRepository, sessionRepository: sessionRepository}
+func NewFriendHandler(friendRepository *repository.FriendsRepository, sessionRepository *repository.SessionRepository, notificationHandler *NotificationHandler, userRepository *repository.UserRepository) *FriendHandler {
+	return &FriendHandler{friendRepository: friendRepository,
+		sessionRepository:   sessionRepository,
+		notificationHandler: notificationHandler,
+		userRepository:      userRepository,
+	}
+}
+
+// GetFriendRequests retrieves the friend requests for the authenticated user.
+// It requires the user to be authenticated and returns the friend requests in JSON format.
+// If there is an error retrieving the friend requests, it returns an HTTP 500 Internal Server Error.
+func (h *FriendHandler) GetFriendRequestsHandler(w http.ResponseWriter, r *http.Request) {
+	userID, err := h.sessionRepository.GetUserIDFromSessionToken(util.GetSessionToken(r))
+	if err != nil {
+		http.Error(w, "User not authenticated", http.StatusUnauthorized)
+		return
+	}
+	requests, err := h.friendRepository.GetFriendRequests(userID)
+	if err != nil {
+		http.Error(w, "Error getting friend requests: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(requests)
 }
 
 // SendFriendRequestHandler handles the HTTP request for sending a friend request.
@@ -47,7 +71,18 @@ func (h *FriendHandler) SendFriendRequestHandler(w http.ResponseWriter, r *http.
 
 	switch status {
 	case "":
-		// No friend request exists, proceed to send one
+		err = h.friendRepository.AddFriend(userID, friendID)
+		if err != nil {
+			http.Error(w, "Error sending friend request "+err.Error(), http.StatusInternalServerError)
+			return
+		} // No friend request exists, proceed to send one
+	case "declined":
+		err = h.friendRepository.UpdateFriendStatus(userID, friendID, "pending")
+		if err != nil {
+			http.Error(w, "Error sending friend request "+err.Error(), http.StatusInternalServerError)
+			return
+		}
+		// The user has declined a friend request from the other user, proceed to send a new friend request
 	case "pending":
 		http.Error(w, "A friend request is already pending between these users", http.StatusConflict)
 		return
@@ -62,12 +97,20 @@ func (h *FriendHandler) SendFriendRequestHandler(w http.ResponseWriter, r *http.
 		return
 	}
 
-	err = h.friendRepository.AddFriend(userID, friendID)
+	// get user for notification message
+	user, err := h.userRepository.GetUserProfileByID(userID)
 	if err != nil {
-		http.Error(w, "Error sending friend request "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Error getting user data: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	message := user.FirstName + " " + user.LastName + " sent you a friend request"
+	err = h.notificationHandler.CreateNotification(friendID, userID, "friend", message)
+	if err != nil {
+		http.Error(w, "Error sending notification "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	fmt.Println("Friend request sent", userID, friendID, status, err)
 	w.WriteHeader(http.StatusCreated)
 }
 
@@ -83,18 +126,37 @@ func (h *FriendHandler) AcceptFriendRequestHandler(w http.ResponseWriter, r *htt
 		return
 	}
 
-	friendID, err := strconv.Atoi(mux.Vars(r)["id"])
+	friendRequestID, err := strconv.Atoi(mux.Vars(r)["id"])
 	if err != nil {
 		http.Error(w, "Invalid friend ID: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	err = h.friendRepository.UpdateFriendStatus(userID, friendID, "accepted")
+	err = h.friendRepository.UpdateFriendStatus(userID, friendRequestID, "accepted")
 	if err != nil {
 		http.Error(w, "Error accepting friend request: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	addedFriend, err := h.userRepository.GetUsernameByID(friendRequestID)
+	if err != nil {
+		http.Error(w, "Error getting friend data: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	// Notification
+	message := "You are now friends with " + addedFriend
+	err = h.notificationHandler.EditFriendRequestNotification(userID, friendRequestID, message)
+	if err != nil {
+		http.Error(w, "Error sending notification "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	username, err := h.userRepository.GetUsernameByID(userID)
+	message = username + " accepted your friend request"
+	err = h.notificationHandler.CreateNotification(friendRequestID, userID, "friend", message)
+	if err != nil {
+		http.Error(w, "Error changing notification message"+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -110,69 +172,32 @@ func (h *FriendHandler) DeclineFriendRequestHandler(w http.ResponseWriter, r *ht
 		return
 	}
 
-	friendID, err := strconv.Atoi(mux.Vars(r)["id"])
+	friendRequestID, err := strconv.Atoi(mux.Vars(r)["id"])
 	if err != nil {
 		http.Error(w, "Invalid friend ID: "+err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	err = h.friendRepository.UpdateFriendStatus(userID, friendID, "declined")
+	err = h.friendRepository.UpdateFriendStatus(userID, friendRequestID, "declined")
 	if err != nil {
 		http.Error(w, "Error declining friend request: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.WriteHeader(http.StatusOK)
-}
+	username, err := h.userRepository.GetUsernameByID(friendRequestID)
 
-// BlockUserHandler handles the blocking of a user.
-// It requires the user to be authenticated and the friend ID to be valid.
-// If successful, it updates the friend status to "blocked" and returns a status code of 200.
-// If there is an error, it returns an appropriate HTTP error response.
-func (h *FriendHandler) BlockUserHandler(w http.ResponseWriter, r *http.Request) {
-	sessionToken := util.GetSessionToken(r)
-	userID, err := h.sessionRepository.GetUserIDFromSessionToken(sessionToken)
+	message := "You declined the friend request from " + username
+	err = h.notificationHandler.EditFriendRequestNotification(userID, friendRequestID, message)
 	if err != nil {
-		http.Error(w, "User not authenticated", http.StatusUnauthorized)
+		http.Error(w, "Error changing notification message"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	friendID, err := strconv.Atoi(mux.Vars(r)["id"])
+	username, err = h.userRepository.GetUsernameByID(userID)
+	message = username + " declined your friend request"
+	err = h.notificationHandler.CreateNotification(friendRequestID, userID, "friend", message)
 	if err != nil {
-		http.Error(w, "Invalid friend ID: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	err = h.friendRepository.UpdateFriendStatus(userID, friendID, "blocked")
-	if err != nil {
-		http.Error(w, "Error blocking user: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-}
-
-// UnblockUserHandler handles the HTTP request to unblock a user.
-// It requires the user to be authenticated and the friend ID to be valid.
-// If successful, it updates the friend status to "accepted" and returns a 200 OK response.
-// If there is an error, it returns an appropriate HTTP error response.
-func (h *FriendHandler) UnblockUserHandler(w http.ResponseWriter, r *http.Request) {
-	sessionToken := util.GetSessionToken(r)
-	userID, err := h.sessionRepository.GetUserIDFromSessionToken(sessionToken)
-	if err != nil {
-		http.Error(w, "User not authenticated", http.StatusUnauthorized)
-		return
-	}
-
-	friendID, err := strconv.Atoi(mux.Vars(r)["id"])
-	if err != nil {
-		http.Error(w, "Invalid friend ID: "+err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	err = h.friendRepository.UpdateFriendStatus(userID, friendID, "accepted")
-	if err != nil {
-		http.Error(w, "Error unblocking user: "+err.Error(), http.StatusInternalServerError)
+		http.Error(w, "Error changing notification message"+err.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -185,39 +210,24 @@ func (h *FriendHandler) UnblockUserHandler(w http.ResponseWriter, r *http.Reques
 // If there is an error retrieving the friends, it returns a 500 Internal Server Error.
 // The response is encoded in JSON format.
 func (h *FriendHandler) GetFriendsHandler(w http.ResponseWriter, r *http.Request) {
-	sessionToken := util.GetSessionToken(r)
-	userID, err := h.sessionRepository.GetUserIDFromSessionToken(sessionToken)
+
+	userID, err := strconv.Atoi(mux.Vars(r)["id"])
 	if err != nil {
-		http.Error(w, "User not authenticated", http.StatusUnauthorized)
-		return
+		sessionToken := util.GetSessionToken(r)
+		userID, err = h.sessionRepository.GetUserIDFromSessionToken(sessionToken)
+		if err != nil {
+			http.Error(w, "User not authenticated", http.StatusUnauthorized)
+			return
+		}
 	}
 
 	friends, err := h.friendRepository.GetFriends(userID)
-	if err != nil {
-		// w.Header().Set("Content-Type", "application/json")
-		// json.NewEncoder(w).Encode(map[string]string{"message": "No friends found"})
-		// Sample friends
-		friends := []model.FriendList{
-			{
-				UserID:    1,
-				FirstName: "John",
-				LastName:  "Doe",
-				AvatarURL: "avatar1.png",
-				Username:  "user1",
-			},
-			{
-				UserID:    2,
-				FirstName: "Jane",
-				LastName:  "Smith",
-				AvatarURL: "avatar2.png",
-				Username:  "user2",
-			},
-		}
-
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(friends)
-
+	if err != nil && err != sql.ErrNoRows {
+		http.Error(w, "Error getting friends: "+err.Error(), http.StatusInternalServerError)
 		return
+	} else if err == sql.ErrNoRows {
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(map[string]string{"message": "No friends found"})
 	}
 
 	w.Header().Set("Content-Type", "application/json")

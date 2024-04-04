@@ -5,6 +5,8 @@ package repository
 import (
 	"backend/pkg/model"
 	"database/sql"
+	"fmt"
+	"os"
 	"time"
 )
 
@@ -22,7 +24,7 @@ func NewGroupRepository(db *sql.DB) *GroupRepository {
 // It returns a slice of Group objects and an error if any.
 func (r *GroupRepository) GetAllGroups() ([]model.Group, error) {
 	// SQL query to select all groups
-	query := `SELECT * FROM groups`
+	query := `SELECT id, creator_id, title, description, image_url, created_at, updated_at FROM groups`
 	rows, err := r.db.Query(query)
 	if err != nil {
 		return nil, err
@@ -32,7 +34,8 @@ func (r *GroupRepository) GetAllGroups() ([]model.Group, error) {
 	var groups []model.Group
 	for rows.Next() {
 		var group model.Group
-		if err := rows.Scan(&group.Id, &group.Title, &group.Description, &group.CreatedAt); err != nil {
+		err := rows.Scan(&group.Id, &group.CreatorId, &group.Title, &group.Description, &group.Image, &group.CreatedAt, &group.UpdatedAt)
+		if err != nil && err != sql.ErrNoRows {
 			return nil, err
 		}
 		groups = append(groups, group)
@@ -45,18 +48,32 @@ func (r *GroupRepository) GetAllGroups() ([]model.Group, error) {
 
 // CreateGroup creates a new group in the database.
 // It returns the ID of the newly created group and an error if any.
-// TODO: review this function - it may also return the new group instead of just the id
 func (r *GroupRepository) CreateGroup(group model.Group) (int64, error) {
 	query := `INSERT INTO groups (creator_id, title, description) VALUES (?, ?, ?)`
 	result, err := r.db.Exec(query, group.CreatorId, group.Title, group.Description)
 	if err != nil {
 		return 0, err
 	}
-	lastInsertID, err := result.LastInsertId()
+	groupID, err := result.LastInsertId()
+	if err != nil {
+		fmt.Println("Error getting last inserted post id")
+	}
+	// add group owner as a member
+	query = `INSERT INTO group_members (group_id, user_id) VALUES (?, ?)`
+	_, err = r.db.Exec(query, groupID, group.CreatorId)
 	if err != nil {
 		return 0, err
 	}
-	return lastInsertID, nil
+
+	// set group image URL
+	var ImageURL = os.Getenv("NEXT_PUBLIC_URL") + ":" + os.Getenv("NEXT_PUBLIC_BACKEND_PORT") + "/images/groups/" + fmt.Sprint(groupID) + ".jpg"
+	query = `UPDATE groups SET image_url = ? WHERE id = ?`
+	_, err = r.db.Exec(query, ImageURL, groupID)
+	if err != nil {
+		return 0, err
+	}
+
+	return groupID, nil
 }
 
 // GetGroupByID retrieves a group by ID from the database.
@@ -65,7 +82,7 @@ func (r *GroupRepository) GetGroupByID(id int) (model.Group, error) {
 	query := `SELECT * FROM groups WHERE id = ?`
 	row := r.db.QueryRow(query, id)
 	var group model.Group
-	err := row.Scan(&group.Id, &group.CreatorId, &group.Title, &group.Description, &group.CreatedAt)
+	err := row.Scan(&group.Id, &group.CreatorId, &group.Title, &group.Description, &group.Image, &group.CreatedAt, &group.UpdatedAt)
 	if err != nil {
 		if err == sql.ErrNoRows {
 			return model.Group{}, nil
@@ -89,4 +106,22 @@ func (r *GroupRepository) DeleteGroup(id int) error {
 	query := `DELETE FROM groups WHERE id = ?`
 	_, err := r.db.Exec(query, id)
 	return err
+}
+
+// LogGroupDeletion logs the deletion of a group.
+func (r *GroupRepository) LogGroupDeletion(groupID int) error {
+	query := `UPDATE groups SET deleted = true WHERE id = ?`
+	_, err := r.db.Exec(query, groupID)
+	return err
+}
+
+func (r *GroupRepository) GetGroupTitleByID(id int) (string, error) {
+	query := `SELECT title FROM groups WHERE id = ?`
+	row := r.db.QueryRow(query, id)
+	var title string
+	err := row.Scan(&title)
+	if err != nil {
+		return "", err
+	}
+	return title, nil
 }

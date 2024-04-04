@@ -1,16 +1,17 @@
 package util
 
 import (
-	"backend/pkg/model"
 	"crypto/rand"
 	"encoding/hex"
-	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 )
+
+type Data interface {
+}
 
 func GenerateSessionToken() string {
 	b := make([]byte, 16)
@@ -21,17 +22,32 @@ func GenerateSessionToken() string {
 	return hex.EncodeToString(b)
 }
 
-func ImageSave(w http.ResponseWriter, r *http.Request, regData *model.RegistrationData) {
-
-	// 2. Extract the image file from the form data
-	file, _, err := r.FormFile("avatar")
+func ImageSave(w http.ResponseWriter, r *http.Request, key string, action string) {
+	file, _, err := r.FormFile("image")
 	if err != nil {
-		fmt.Println("No image uploaded on register")
 		return
 	}
 	defer file.Close()
-	// Define the relative path to the images directory
-	imagePath := filepath.Join(".", "pkg", "db", "images", regData.Username+".jpg")
+	var imagePath string
+	switch action {
+	case "register":
+		imagePath = filepath.Join(".", "pkg", "db", "images", key+".jpg")
+		// v is now of type *model.RegistrationData
+	case "post":
+		imagePath = filepath.Join(".", "pkg", "db", "images", "posts", key+".jpg")
+		// Handle PostData
+		// v is now of type *model.PostData
+	case "comment":
+		imagePath = filepath.Join(".", "pkg", "db", "images", "comments", key+".jpg")
+	// Handle CommentData
+	// v is now of type *model.CommentData
+	case "group":
+		imagePath = filepath.Join(".", "pkg", "db", "images", "groups", key+".jpg")
+	default:
+		// Handle other types
+	}
+
+	// Define the relative path to the images directo
 	out, err := os.Create(imagePath)
 	if err != nil {
 		http.Error(w, "Error creating file: "+err.Error(), http.StatusInternalServerError)
@@ -46,10 +62,10 @@ func ImageSave(w http.ResponseWriter, r *http.Request, regData *model.Registrati
 	}
 
 	// 4. Get the path of the saved image
-	// 5. Replace the regData.AvatarURL with the path of the saved image
-	// TODO: Change this to the actual server URL
-	regData.AvatarURL = "http://localhost:8080/images/" + regData.Username + ".jpg"
+	// 5. Replace the regData.AvatarURL with the path of the saved imag
 
+	// 4. Get the path of the saved image
+	// 5. Replace the regData.AvatarURL with the path of the saved image
 }
 
 func GetSessionToken(r *http.Request) string {
